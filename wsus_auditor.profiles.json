@@ -1,0 +1,19 @@
+﻿{
+    "Version":  1,
+    "LastProfile":  "Offline Demo",
+    "Profiles":  [
+                     {
+                         "Name":  "Offline Demo",
+                         "WsusServer":  "mock-wsus",
+                         "UseSsl":  false,
+                         "WsusPort":  8530,
+                         "DomainDnsRoot":  "contoso.local",
+                         "BaseOU":  "OU=Managed Devices,DC=contoso,DC=local",
+                         "TopLevelOUFilter":  [
+
+                                              ],
+                         "UseMockMode":  true,
+                         "MockDataPath":  "wsus_auditor.mock.json"
+                     }
+                 ]
+}

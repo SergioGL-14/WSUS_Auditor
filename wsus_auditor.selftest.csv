@@ -1,0 +1,6 @@
+﻿"Nombre","IP","Version","Marca","Modelo","Error","PorcentajeInstalacion","InformeUltimoEstado","UltimoContacto","Estado"
+"orphan-wsus-001","10.30.0.50","Windows 10 Enterprise","Dell","OptiPlex 5080","","N/A","03/18/2026 10:20:00","03/18/2026 10:15:00","Ok"
+"PC-VIG-002","10.20.0.22","10.0.19045","Dell","OptiPlex 7090","","N/A","","","No en WSUS"
+"PC-MAD-001","10.10.0.11","Windows 11 Enterprise","Dell","Latitude 7420","Microsoft Defender Platform Update","67%","03/20/2026 09:10:00","03/20/2026 09:00:00","Ok"
+"PC-MAD-002","10.10.0.12","Windows 10 Enterprise","HP","EliteDesk 800 G6","","100%","01/15/2026 08:35:00","01/15/2026 08:30:00","No notificado >30 días"
+"PC-VIG-001","10.20.0.21","Windows 11 Enterprise","Lenovo","ThinkCentre M90q","","100%","03/22/2026 12:05:00","03/22/2026 12:00:00","Ok"
