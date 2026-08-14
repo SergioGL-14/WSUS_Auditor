@@ -112,6 +112,8 @@ La ventana inicial permite adaptar la herramienta a otros entornos:
 - Reset completo de Windows Update.
 
 Las acciones se generan en un script temporal, se copian al equipo remoto y se ejecutan por WMI (`Win32_Process`), recuperando despues el log remoto.
+- Las credenciales de remediacion se solicitan con `Get-Credential` y se mantienen en un objeto `PSCredential` en memoria. No se guardan en perfiles, logs ni argumentos de procesos. El acceso SMB se realiza con un `PSDrive` temporal y la sesion CIM usa la misma credencial.
+- El script y el log remoto se eliminan al terminar. Si el equipo pierde conectividad o el proceso remoto queda bloqueado, puede quedar un fichero temporal en `C:\Temp` del equipo remoto y debe revisarse manualmente.
 
 ---
 
@@ -134,6 +136,12 @@ Puede ejecutarse una comprobacion automatizada sin AD ni WSUS con:
 .\WSUS_Auditor.ps1 -SelfTest -ProfileName "Offline Demo"
 ```
 
+La prueba estatica de seguridad requiere Pester y comprueba que no se pasa ninguna contraseña a `net use`, WMI legado ni argumentos de procesos:
+
+```powershell
+Invoke-Pester .\tests\Static.Tests.ps1
+```
+
 El `SelfTest` valida:
 
 - carga del perfil JSON
@@ -152,13 +160,13 @@ El `SelfTest` valida:
 - `WSUS_Auditor.ps1`: aplicacion principal.
 - `wsus_auditor.profiles.json`: perfiles de entorno.
 - `wsus_auditor.mock.json`: datos de simulacion para pruebas offline.
-- `wsus_auditor.selftest.csv`: CSV generado por la ultima ejecucion de `SelfTest`.
+- Los CSV de `SelfTest`, logs, outputs y temporales estan excluidos por `.gitignore`; los perfiles JSON y los datos mock son configuracion/datos legitimos y permanecen versionables.
 
 ---
 
 ## Siguientes Mejoras Recomendadas
 
-- Guardar las credenciales de forma segura o integrarse con credenciales del sistema.
+- Integrar credenciales del sistema si el entorno requiere evitar el dialogo interactivo.
 - Separar UI, acceso a AD/WSUS y remediacion en modulos.
 - Añadir validaciones de conectividad antes de abrir la ventana principal.
 - Empaquetar la herramienta como ejecutable para despliegue estandar.

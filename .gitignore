@@ -1,0 +1,7 @@
+wsus_auditor.selftest.csv
+*.log
+outputs/
+output/
+temp/
+tmp/
+*.tmp

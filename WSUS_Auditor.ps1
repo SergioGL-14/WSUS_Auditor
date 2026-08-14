@@ -1231,7 +1231,7 @@ function Build-TreeView {
     try {
         $tree.Nodes.Clear()
         $tree.BeginUpdate()  # Evitar parpadeo durante la carga
-        
+
         $script:wsusLookup = @{}
 
         if ($script:wsusConnected -and $script:wsus) {
@@ -1250,7 +1250,7 @@ function Build-TreeView {
         Mostrar-Mensaje "Cargando OUs de primer nivel (carga diferida activada)..."
 
         $firstLevelOUs = Get-ScopedTopLevelOUs
-        
+
         foreach ($ou in $firstLevelOUs) {
             $nodeOU = New-Object System.Windows.Forms.TreeNode($ou.Name)
             $nodeOU.Tag = @{ Type = "OU"; DN = $ou.DistinguishedName; Loaded = $false }
@@ -1306,7 +1306,7 @@ function Load-NodeChildren {
                 $fqdn = Get-ComputerFqdn -adObj $c -computerName $c.Name
                 $childNode = New-Object System.Windows.Forms.TreeNode($fqdn)
                 $childNode.Tag = @{ Type = "Computer"; SamAccountName = $c.SamAccountName; ADObject = $c; FQDN = $fqdn }
-                
+
                 if ($script:wsusLookup.ContainsKey($fqdn.ToLower())) {
                     $childNode.ForeColor = [System.Drawing.Color]::DarkGreen
                 } else {
@@ -2080,16 +2080,11 @@ $btnSoluciones.Add_Click({
     $txtUser.Text = "$env:USERDOMAIN\$env:USERNAME"
     $formOpciones.Controls.Add($txtUser)
 
-    $txtPass = New-Object System.Windows.Forms.TextBox
-    $txtPass.Location = New-Object System.Drawing.Point(230,255)
-    $txtPass.Size = New-Object System.Drawing.Size(200,23)
-    $txtPass.UseSystemPasswordChar = $true
-    $formOpciones.Controls.Add($txtPass)
-
     $lblPass = New-Object System.Windows.Forms.Label
-    $lblPass.Text = "Contraseña"
-    $lblPass.Location = New-Object System.Drawing.Point(230,235)
-    $lblPass.Size = New-Object System.Drawing.Size(100,20)
+    $lblPass.Text = "La contraseña se solicitará de forma segura al ejecutar."
+    $lblPass.Location = New-Object System.Drawing.Point(230,255)
+    $lblPass.Size = New-Object System.Drawing.Size(250,35)
+    $lblPass.ForeColor = [System.Drawing.Color]::DimGray
     $formOpciones.Controls.Add($lblPass)
 
     # Botones
@@ -2116,11 +2111,10 @@ $btnSoluciones.Add_Click({
         return
     }
 
-    # Validar credenciales
-    $usuario = $txtUser.Text
-    $password = $txtPass.Text
-    if ([string]::IsNullOrWhiteSpace($usuario) -or [string]::IsNullOrWhiteSpace($password)) {
-        Mostrar-Mensaje "❌ Debe ingresar usuario y contraseña."
+    # Validar usuario antes de abrir el diálogo seguro de credenciales.
+    $usuario = $txtUser.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($usuario)) {
+        Mostrar-Mensaje "❌ Debe indicar un usuario."
         return
     }
 
@@ -2129,6 +2123,13 @@ $btnSoluciones.Add_Click({
         Mostrar-Mensaje "❌ No se seleccionó ninguna acción."
         return
     }
+
+    $credential = Get-Credential -UserName $usuario -Message "Credenciales para administrar los equipos seleccionados"
+    if (-not $credential) {
+        Mostrar-Mensaje "❌ No se proporcionaron credenciales."
+        return
+    }
+    $usuario = $credential.UserName
 
     # Ventana de log de resultados
     $ventanaLog = New-Object System.Windows.Forms.Form
@@ -2182,21 +2183,20 @@ $btnSoluciones.Add_Click({
             continue
         }
         
-        # Verificar acceso a ADMIN$ (necesario para PsExec)
-        $adminShare = "\\$target\ADMIN$"
-        $txtLog.AppendText("[$nombre] Verificando acceso a $adminShare...`r`n")
+        # El PSDrive usa la credencial sin exponerla en argumentos de procesos.
+        $driveName = "WSUS_$([guid]::NewGuid().ToString('N').Substring(0,8))"
+        $remoteDriveRoot = "${driveName}:"
+        $cimSession = $null
+        $txtLog.AppendText("[$nombre] Verificando acceso administrativo...`r`n")
         [System.Windows.Forms.Application]::DoEvents()
-        
-        # Intentar mapear con credenciales
+
         $netUseResult = $null
         try {
-            # Primero desconectar si existe
-            $null = & net use $adminShare /delete /y 2>&1
-            # Conectar con credenciales
-            $netUseResult = & net use $adminShare /user:$usuario $password 2>&1
-            $netUseSuccess = $LASTEXITCODE -eq 0
+            New-PSDrive -Name $driveName -PSProvider FileSystem -Root "\\$target\C$" -Credential $credential -Scope Local -ErrorAction Stop | Out-Null
+            $netUseSuccess = $true
         } catch {
             $netUseSuccess = $false
+            $netUseResult = $_.Exception.Message
         }
         
         if (-not $netUseSuccess) {
@@ -2207,6 +2207,7 @@ $btnSoluciones.Add_Click({
             $txtLog.AppendText("    - El usuario tiene permisos de administrador local`r`n")
             $txtLog.AppendText("    - Error: $netUseResult`r`n")
             $txtLog.SelectionColor = [System.Drawing.Color]::LightGreen
+            Remove-PSDrive -Name $driveName -Force -ErrorAction SilentlyContinue
             $fallidos++
             continue
         }
@@ -2218,9 +2219,9 @@ $btnSoluciones.Add_Click({
             $scriptGuid = [guid]::NewGuid().ToString('N').Substring(0,8)
             $scriptName = "WSUS_Fix_$scriptGuid.ps1"
             $logName = "WSUS_Fix_$scriptGuid.log"
-            $remoteScriptUNC = "\\$target\C$\Temp\$scriptName"
+            $remoteScriptUNC = "$remoteDriveRoot\Temp\$scriptName"
             $remoteScriptLocal = "C:\Temp\$scriptName"
-            $remoteLogUNC = "\\$target\C$\Temp\$logName"
+            $remoteLogUNC = "$remoteDriveRoot\Temp\$logName"
             $remoteLogLocal = "C:\Temp\$logName"
             
             # Crear contenido del script PS1 con logging detallado
@@ -2528,7 +2529,7 @@ if (`$erroresTotal -eq 0) {
 "@
             
             # Asegurar que existe C:\Temp en el equipo remoto
-            $remoteTempUNC = "\\$target\C$\Temp"
+            $remoteTempUNC = "$remoteDriveRoot\Temp"
             if (-not (Test-Path $remoteTempUNC)) {
                 New-Item -Path $remoteTempUNC -ItemType Directory -Force | Out-Null
             }
@@ -2543,34 +2544,19 @@ if (`$erroresTotal -eq 0) {
             [System.Windows.Forms.Application]::DoEvents()
             
             try {
-                # Crear credenciales para WMI
-                $secPassword = ConvertTo-SecureString $password -AsPlainText -Force
-                $credential = New-Object System.Management.Automation.PSCredential($usuario, $secPassword)
-                
                 # Comando a ejecutar: PowerShell con el script
                 $comando = "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$remoteScriptLocal`""
-                
-                # Conectar via WMI con credenciales
-                $connOptions = New-Object System.Management.ConnectionOptions
-                $connOptions.Username = $usuario
-                $connOptions.Password = $password
-                $connOptions.Impersonation = [System.Management.ImpersonationLevel]::Impersonate
-                $connOptions.EnablePrivileges = $true
-                
-                $scope = New-Object System.Management.ManagementScope("\\$target\root\cimv2", $connOptions)
-                $scope.Connect()
-                
-                if ($scope.IsConnected) {
+
+                $cimSession = New-CimSession -ComputerName $target -Credential $credential -SessionOption (New-CimSessionOption -Protocol Dcom) -ErrorAction Stop
+                $scope = $cimSession
+
+                if ($cimSession.State -eq "Opened") {
                     $txtLog.AppendText("[$nombre] Conectado via WMI`r`n")
                     
                     # Crear proceso remoto
-                    $processClass = New-Object System.Management.ManagementClass($scope, [System.Management.ManagementPath]"Win32_Process", $null)
-                    $inParams = $processClass.GetMethodParameters("Create")
-                    $inParams["CommandLine"] = $comando
-                    
-                    $outParams = $processClass.InvokeMethod("Create", $inParams, $null)
-                    $returnValue = $outParams["ReturnValue"]
-                    $processId = $outParams["ProcessId"]
+                    $processResult = Invoke-CimMethod -CimSession $cimSession -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $comando } -ErrorAction Stop
+                    $returnValue = $processResult.ReturnValue
+                    $processId = $processResult.ProcessId
                     
                     if ($returnValue -eq 0) {
                         $txtLog.AppendText("[$nombre] Proceso iniciado (PID: $processId)`r`n")
@@ -2589,8 +2575,7 @@ if (`$erroresTotal -eq 0) {
                             
                             # Verificar si el proceso sigue corriendo
                             $query = "SELECT * FROM Win32_Process WHERE ProcessId = $processId"
-                            $searcher = New-Object System.Management.ManagementObjectSearcher($scope, [System.Management.ObjectQuery]$query)
-                            $results = $searcher.Get()
+                            $results = Get-CimInstance -CimSession $cimSession -Query $query -ErrorAction Stop
                             
                             if ($results.Count -eq 0) {
                                 $processFinished = $true
@@ -2695,7 +2680,7 @@ if (`$erroresTotal -eq 0) {
             
             $txtLog.SelectionColor = [System.Drawing.Color]::LightGreen
             
-            # Limpiar script remoto (esperar un poco para asegurar que terminó)
+            # Limpiar referencias remotas y sesiones incluso si la operación falla.
             Start-Sleep -Seconds 2
             Remove-Item $remoteScriptUNC -Force -ErrorAction SilentlyContinue
 
@@ -2706,8 +2691,8 @@ if (`$erroresTotal -eq 0) {
             $fallidos++
         }
         
-        # Desconectar recurso compartido
-        $null = & net use "\\$target\ADMIN$" /delete /y 2>&1
+        if ($cimSession) { Remove-CimSession -CimSession $cimSession -ErrorAction SilentlyContinue }
+        Remove-PSDrive -Name $driveName -Force -ErrorAction SilentlyContinue
 
         $txtLog.ScrollToCaret()
         [System.Windows.Forms.Application]::DoEvents()
@@ -2719,6 +2704,7 @@ if (`$erroresTotal -eq 0) {
     $txtLog.ScrollToCaret()
 
     Mostrar-Mensaje "✅ Proceso completado: $exitosos exitosos, $fallidos fallidos"
+    $credential = $null
 })
 
 # ----------------------------------------
